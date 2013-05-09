@@ -121,22 +121,24 @@ proc report {} {
   set total 0.0
   switch $Mode {
     0 {
-      if {0 < [llength $Selection(Domains)]} {
+      if { 0 < [llength $Selection(Domains)] } {
         foreach dom $Selection(Domains) {
           set exam [pw::Examine create DomainArea]
           $exam addEntity $dom
           $exam examine
 
-          set dims [$dom getDimensions]
-          set imax [lindex $dims 0]
-          set jmax [lindex $dims 1]
-
           set area 0.0
-          for {set i 1} {$i < $imax} {incr i} {
-            if {$jmax == 1} {
-              set area [expr $area + [$exam getValue $dom "$i 1"]]
-            } else {
-              for {set j 1} {$j < $jmax} {incr j} {
+          if [$dom isOfType pw::DomainUnstructured] {
+            set count [$dom getCellCount]
+            for { set i 1 } { $i <= $count } { incr i } {
+              set area [expr $area + [$exam getValue $dom $i]]
+            }
+          } else {
+            set dims [$dom getDimensions]
+            set imax [lindex $dims 0]
+            set jmax [lindex $dims 1]
+            for { set i 1 } { $i < $imax } { incr i } {
+              for { set j 1 } { $j < $jmax } { incr j } {
                 set area [expr $area + [$exam getValue $dom "$i $j"]]
               }
             }
@@ -144,6 +146,8 @@ proc report {} {
 
           tableRow [$dom getName] $area
           set total [expr $total + $area]
+
+          $exam delete
         }
       }
     }
@@ -154,25 +158,32 @@ proc report {} {
           $exam addEntity $blk
           $exam examine
 
-          set dims [$blk getDimensions]
-          set imax [lindex $dims 0]
-          set jmax [lindex $dims 1]
-          set kmax [lindex $dims 2]
-
           set volume 0.0
-          for {set i 1} {$i < $imax} {incr i} {
-            if {$kmax == 1 && $jmax == 1} {
-              # tetrahedra
-              set volume [expr $volume + [$exam getValue $blk "$i 1 1"]]
-            } elseif {$jmax == 1} {
-              # prism
-              for {set k 1} {$k < $kmax} {incr k} {
+          if [$blk isOfType pw::BlockExtruded] {
+            # unstructured: prism
+            set imax [[$blk getFace 1] getCellCount]
+            set kmax [lindex [$blk getDimensions] 2]
+            for { set i 1 } { $i <= $imax } { incr i } {
+              for { set k 1 } { $k < $kmax } { incr k } {
                 set volume [expr $volume + [$exam getValue $blk "$i 1 $k"]]
               }
-            } else {
-              # structured
-              for {set j 1} {$j < $jmax} {incr j} {
-                for {set k 1} {$k < $kmax} {incr k} {
+            }
+          } elseif [$blk isOfType pw::BlockUnstructured] {
+            # unstructured: tetrahedra and pyramid
+            set imax [$blk getCellCount]
+            for { set i 1 } { $i <= $imax } { incr i } {
+              set volume [expr $volume + [$exam getValue $blk "$i 1 1"]]
+            }
+          } else {
+            # structured
+            set dims [$blk getDimensions]
+            set imax [lindex $dims 0]
+            set jmax [lindex $dims 1]
+            set kmax [lindex $dims 2]
+
+            for { set i 1 } { $i < $imax } { incr i } {
+              for { set j 1 } { $j < $jmax } { incr j } {
+                for { set k 1 } { $k < $kmax } { incr k } {
                   set volume [expr $volume + [$exam getValue $blk "$i $j $k"]]
                 }
               }
@@ -180,12 +191,12 @@ proc report {} {
           }
 
           tableRow [$blk getName] $volume
-          # puts "Volume of [$blk getName]: $volume" 
           if {$volume > 0.0} {
             set total [expr $total + $volume]
           } else {
             set total [expr $total - $volume]
           }
+          $exam delete
         }
       }
     }
